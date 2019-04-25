@@ -275,17 +275,3 @@ func (a *Auth) checkAccount(accountId string, accessKey provision.AccessKey) (bo
 	a.cache.Set(cacheKey, false, cache.DefaultExpiration)
 	return false, errors.New("got code " + string(res.StatusCode) + " from " + url)
 }
-
-//
-//
-//// Credentials
-//type Credentials struct {
-//	Id       string `json:"id"`
-//	Password string `json:"password"`
-//}
-//
-//// AckUserResponse
-//type AckUserResponse struct {
-//	ack.Ack
-//	Payload provision.UserResult `json:"payload"`
-//}

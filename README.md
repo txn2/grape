@@ -6,7 +6,7 @@
 [![Docker Container Layers](https://shields.beevelop.com/docker/image/layers/txn2/grape/latest.svg)](https://hub.docker.com/r/txn2/grape/)
 
 
-WIP: TXN2 GRAfana Proxy for Elasticsearch data source.
+WIP: Grafana Elasticsearch proxy for TXN2 account keys.
 
 
 ## Release Packaging

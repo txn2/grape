@@ -20,8 +20,8 @@ import (
 
 var (
 	indexRxp       = regexp.MustCompile(`"index".*?:`)
-	indexSingleRxp = regexp.MustCompile(`"index".*?:.*?"`)
-	indexArrayRxp  = regexp.MustCompile(`"index".*?:.*?\[`)
+	indexSingleRxp = regexp.MustCompile(`"index":"`)
+	indexArrayRxp  = regexp.MustCompile(`"index":\[`)
 	accountRxp     = regexp.MustCompile(`^[a-z0-9].*?\-`)
 	mappingRxp     = regexp.MustCompile(`^\/\S+\/_mapping$`)
 	accountPathRxp = regexp.MustCompile(`^\/.*?-`)
@@ -101,12 +101,15 @@ func (a *Auth) RequestHandler(c *gin.Context) {
 		if mappingRxp.MatchString(c.Request.URL.Path) {
 			aP := accountPathRxp.FindString(strings.TrimPrefix(c.Request.URL.Path, a.PathPrefix))
 			accountId := aP[1 : len(aP)-1]
+			accountId = strings.TrimPrefix(accountId, "[")
 
 			a.Logger.Info("Mapping request", zap.String("account", accountId))
 
 			// check for key access to account
 			ok, err := a.checkAccount(accountId, accessKey)
 			if err != nil {
+				a.Logger.Warn("Account lookup error", zap.Error(err))
+
 				ak := ack.Gin(c)
 				ak.GinErrorAbort(401, "AccountLookupError", err.Error())
 				a.Logger.Info("Mapping request denied",
@@ -124,8 +127,8 @@ func (a *Auth) RequestHandler(c *gin.Context) {
 
 		// not a _mapping GET or unauthorized key
 		ak := ack.Gin(c)
-		ak.GinErrorAbort(401, "NonMappingGetRequest", c.Request.URL.Path)
-		a.Logger.Info("Non-Mapping GET request denied.",
+		ak.GinErrorAbort(401, "UnauthorizedGetRequest", c.Request.URL.Path)
+		a.Logger.Info("GET request access denied.",
 			zap.String("url", c.Request.URL.Path),
 		)
 		return
@@ -166,36 +169,7 @@ func (a *Auth) RequestHandler(c *gin.Context) {
 				continue
 			}
 
-			// does the line contain a reference to a single index?
-			if indexSingleRxp.Match(ln) {
-				idxSingle := &IndexSingle{}
-				err := json.Unmarshal(ln, &idxSingle)
-				if err != nil {
-					ak := ack.Gin(c)
-					ak.GinErrorAbort(401, "MsearchPostBodyIdxLineError", err.Error())
-					return
-				}
-
-				accountId := strings.TrimSuffix(accountRxp.FindString(idxSingle.Index), "-")
-				ok, err := a.checkAccount(accountId, accessKey)
-				if err != nil {
-					ak := ack.Gin(c)
-					ak.GinErrorAbort(401, "AccountLookupError", err.Error())
-					a.Logger.Info("Mapping request denied",
-						zap.String("key_name", accessKey.Name),
-						zap.String("account", accountId),
-					)
-					return
-				}
-
-				// access granted
-				if ok {
-					return
-				}
-
-			}
-
-			// does the line contain a reference to a single index?
+			// does the line contain a reference to aa array index?
 			if indexArrayRxp.Match(ln) {
 				idxArray := &IndexArray{}
 				err := json.Unmarshal(ln, &idxArray)
@@ -227,6 +201,35 @@ func (a *Auth) RequestHandler(c *gin.Context) {
 				}
 
 			}
+
+			// does the line contain a reference to a single index?
+			if indexSingleRxp.Match(ln) {
+				idxSingle := &IndexSingle{}
+				err := json.Unmarshal(ln, &idxSingle)
+				if err != nil {
+					ak := ack.Gin(c)
+					ak.GinErrorAbort(401, "MsearchPostBodyIdxLineError", err.Error())
+					return
+				}
+
+				accountId := strings.TrimSuffix(accountRxp.FindString(idxSingle.Index), "-")
+				ok, err := a.checkAccount(accountId, accessKey)
+				if err != nil {
+					ak := ack.Gin(c)
+					ak.GinErrorAbort(401, "AccountLookupError", err.Error())
+					a.Logger.Info("Mapping request denied",
+						zap.String("key_name", accessKey.Name),
+						zap.String("account", accountId),
+					)
+					return
+				}
+
+				// access granted
+				if ok {
+					return
+				}
+
+			}
 		}
 
 		return
@@ -240,6 +243,8 @@ func (a *Auth) RequestHandler(c *gin.Context) {
 
 // checkAccount
 func (a *Auth) checkAccount(accountId string, accessKey provision.AccessKey) (bool, error) {
+	a.Logger.Debug("Check account.", zap.String("account", accountId))
+
 	cacheKey := accountId + accessKey.Name + accessKey.Key
 
 	// check cache
@@ -258,6 +263,11 @@ func (a *Auth) checkAccount(accountId string, accessKey provision.AccessKey) (bo
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(accountKeyJson))
 	res, err := a.HttpClient.Do(req)
 	if err != nil {
+		a.Logger.Warn(
+			"Provision service request failure.",
+			zap.String("url", url),
+			zap.Error(err))
+
 		a.cache.Set(cacheKey, false, cache.DefaultExpiration)
 		return false, err
 	}

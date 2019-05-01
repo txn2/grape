@@ -15,7 +15,7 @@ var (
 
 	// Grape uses the txn2/provision service to authenticate Account keys used for
 	// the Elastisearch data source. See: https://github.com/txn2/provision
-	provisionServiceEnv = getEnv("PROVISION_SERVICE", "http://api-provision:8080")
+	provisionServiceEnv = getEnv("PROVISION_SERVICE", "http://api-provision:8070")
 )
 
 func main() {
